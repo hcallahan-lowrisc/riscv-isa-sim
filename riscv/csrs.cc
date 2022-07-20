@@ -76,6 +76,8 @@ reg_t csr_t::written_value() const noexcept {
 basic_csr_t::basic_csr_t(processor_t* const proc, const reg_t addr, const reg_t init):
   csr_t(proc, addr),
   val(init) {
+  FILE *log_file = proc->get_log_file();
+  fprintf(log_file, "addr=0x%016" PRIx64 " init=0x%016" PRIx64 "\n", addr, init);
 }
 
 bool basic_csr_t::unlogged_write(const reg_t val) noexcept {
