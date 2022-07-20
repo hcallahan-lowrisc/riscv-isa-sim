@@ -38,8 +38,11 @@ void mmu_t::flush_tlb()
   flush_icache();
 }
 
-static void throw_access_exception(bool virt, reg_t addr, access_type type)
+void mmu_t::throw_access_exception(bool virt, reg_t addr, access_type type)
 {
+  FILE *log_file = proc->get_log_file();
+  fprintf(log_file, "mmu_t::throw_access_exception()");
+
   switch (type) {
     case FETCH: throw trap_instruction_access_fault(virt, addr, 0, 0);
     case LOAD: throw trap_load_access_fault(virt, addr, 0, 0);
@@ -53,6 +56,7 @@ reg_t mmu_t::translate(reg_t addr, reg_t len, access_type type, uint32_t xlate_f
   if (!proc)
     return addr;
 
+  // Get all flags required for a successful virtual-memory translation
   bool virt = proc->state.v;
   bool hlvx = xlate_flags & RISCV_XLATE_VIRT_HLVX;
   reg_t mode = proc->state.prv;
@@ -68,9 +72,16 @@ reg_t mmu_t::translate(reg_t addr, reg_t len, access_type type, uint32_t xlate_f
     }
   }
 
+  // Walk the TLB to check for page faults, and return the mapped physical address.
+  // Should there be a way to bypass this for cases where
+  // virtual memory is disabled? Eg. microcontroller-class cores (IBEX)
   reg_t paddr = walk(addr, type, mode, virt, hlvx) | (addr & (PGSIZE-1));
-  if (!pmp_ok(paddr, len, type, mode))
+
+  // Check if the access causes a PMP fault
+  if (!pmp_ok(paddr, len, type, mode)) {
     throw_access_exception(virt, addr, type);
+  }
+
   return paddr;
 }
 
@@ -79,6 +90,7 @@ tlb_entry_t mmu_t::fetch_slow_path(reg_t vaddr)
   reg_t paddr = translate(vaddr, sizeof(fetch_temp), FETCH, 0);
 
   if (auto host_addr = sim->addr_to_mem(paddr)) {
+    // Populate cache to speedup subsequent accesses (disabled for ibex)
     return refill_tlb(vaddr, paddr, host_addr, FETCH);
   } else {
     if (!mmio_load(paddr, sizeof fetch_temp, (uint8_t*)&fetch_temp))
@@ -117,17 +129,30 @@ reg_t reg_from_bytes(size_t len, const uint8_t* bytes)
 bool mmu_t::mmio_ok(reg_t addr, access_type type)
 {
   // Disallow access to debug region when not in debug mode
-  if (addr >= DEBUG_START && addr <= DEBUG_END && proc && !proc->state.debug_mode)
+  if (addr >= DEBUG_START && addr <= DEBUG_END && proc && !proc->state.debug_mode) {
+    FILE *log_file = proc->get_log_file();
+    int xlen = proc->get_xlen();
+    fprintf(log_file, "mmu_t::mmio_ok() in debug mode = True \n");
+    fprintf(log_file, "addr=0x%016" PRIx64 "\n", addr);
+    fprintf(log_file, "DEBUG_START=0x%016" PRIx64 "\n", DEBUG_START);
+    fprintf(log_file, "DEBUG_END=0x%016" PRIx64 "\n", DEBUG_END);
     return false;
+  }
 
   return true;
 }
 
 bool mmu_t::mmio_load(reg_t addr, size_t len, uint8_t* bytes)
 {
-  if (!mmio_ok(addr, LOAD))
-    return false;
+  FILE *log_file = proc->get_log_file();
 
+  if (!mmio_ok(addr, LOAD)) {
+    fprintf(log_file, "mmu_t::mmio_load() mmio_ok not TRUE \n");
+    return false;
+  }
+
+  // sim == simif_t, (not sim_t)
+  // fprintf(log_file, "mmio_t::mmio_load() attempting sim->mmio_load() \n");
   return sim->mmio_load(addr, len, bytes);
 }
 
@@ -141,7 +166,15 @@ bool mmu_t::mmio_store(reg_t addr, size_t len, const uint8_t* bytes)
 
 void mmu_t::load_slow_path(reg_t addr, reg_t len, uint8_t* bytes, uint32_t xlate_flags)
 {
+  FILE *log_file = proc->get_log_file();
+  int xlen = proc->get_xlen();
+
+  fprintf(log_file, "mmu_t::load_slow_path() start \n");
+  fprintf(log_file, "addr=0x%016" PRIx64 "\n", addr);
+
   reg_t paddr = translate(addr, len, LOAD, xlate_flags);
+
+  fprintf(log_file, "paddr=0x%016" PRIx64 "\n", paddr);
 
   if (auto host_addr = sim->addr_to_mem(paddr)) {
     memcpy(bytes, host_addr, len);
@@ -150,6 +183,8 @@ void mmu_t::load_slow_path(reg_t addr, reg_t len, uint8_t* bytes, uint32_t xlate
     else if (xlate_flags == 0)
       refill_tlb(addr, paddr, host_addr, LOAD);
   } else if (!mmio_load(paddr, len, bytes)) {
+    FILE *log_file = proc->get_log_file();
+    fprintf(log_file, "mmu_t::load_slow_path() \n");
     throw trap_load_access_fault((proc) ? proc->state.v : false, addr, 0, 0);
   }
 

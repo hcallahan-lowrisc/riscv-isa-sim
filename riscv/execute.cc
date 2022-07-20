@@ -182,6 +182,9 @@ static inline reg_t execute_insn(processor_t* p, reg_t pc, insn_fetch_t fetch)
   commit_log_stash_privilege(p);
   reg_t npc;
 
+  FILE *log_file = p->get_log_file();
+  int xlen = p->get_xlen();
+
   try {
     npc = fetch.func(p, fetch.insn, pc);
     if (npc != PC_SERIALIZE_BEFORE) {
@@ -196,12 +199,18 @@ static inline reg_t execute_insn(processor_t* p, reg_t pc, insn_fetch_t fetch)
 #ifdef RISCV_ENABLE_COMMITLOG
   } catch (wait_for_interrupt_t &t) {
       if (p->get_log_commits_enabled()) {
+        fprintf(log_file, "execute_insn(): Caught wait_for_interrupt_t at pc=");
+        commit_log_print_value(log_file, xlen, pc);
+        fprintf(log_file, "\n");
         commit_log_stash_pc(p, pc);
         commit_log_print_insn(p, pc, fetch.insn);
       }
       throw;
   } catch(mem_trap_t& t) {
       //handle segfault in midlle of vector load/store
+      fprintf(log_file, "execute_insn(): Caught mem_trap_t at pc=");
+      commit_log_print_value(log_file, xlen, pc);
+      fprintf(log_file, "\n");
       if (p->get_log_commits_enabled()) {
         for (auto item : p->get_state()->log_reg_write) {
           if ((item.first & 3) == 3) {
@@ -233,6 +242,9 @@ bool processor_t::slow_path()
 // fetch/decode/execute loop
 void processor_t::step(size_t n)
 {
+  FILE *log_file = this->get_log_file();
+  int xlen = this->get_xlen();
+
 #ifdef RISCV_ENABLE_COMMITLOG
   state.last_inst_pc = PC_INVALID;
 #endif
@@ -317,6 +329,10 @@ void processor_t::step(size_t n)
     }
     catch(trap_t& t)
     {
+      fprintf(log_file, "step():catch(trap_t&), last_inst_pc=");
+      commit_log_print_value(log_file, xlen, pc);
+      fprintf(log_file, "\n");
+
       take_trap(t, pc);
       n = instret;
 
@@ -327,11 +343,18 @@ void processor_t::step(size_t n)
     }
     catch (triggers::matched_t& t)
     {
+      int xlen = this->get_state()->last_inst_xlen;
+      fprintf(log_file,
+              "step():catch(triggers::matched_t&), last_inst_pc=");
+      commit_log_print_value(log_file, xlen, state.last_inst_pc);
+      fprintf(log_file, "\n");
+
       if (mmu->matched_trigger) {
         // This exception came from the MMU. That means the instruction hasn't
         // fully executed yet. We start it again, but this time it won't throw
         // an exception because matched_trigger is already set. (All memory
         // instructions are idempotent so restarting is safe.)
+        fprintf(log_file, "matched_trigger=True : ");
 
         insn_fetch_t fetch = mmu->load_insn(pc);
         pc = execute_insn(this, pc, fetch);
@@ -342,19 +365,24 @@ void processor_t::step(size_t n)
       }
       switch (t.action) {
         case triggers::ACTION_DEBUG_MODE:
+          fprintf(log_file, "ACTION_DEBUG_MODE ");
           enter_debug_mode(DCSR_CAUSE_HWBP);
           break;
         case triggers::ACTION_DEBUG_EXCEPTION: {
+          fprintf(log_file, "ACTION_DEBUG_EXCEPTION ");
           trap_breakpoint trap(state.v, t.address);
           take_trap(trap, pc);
           break;
         }
         default:
+          fprintf(log_file, "default ");
           abort();
       }
+      fprintf(log_file, "\n");
     }
     catch (wait_for_interrupt_t &t)
     {
+      fprintf(log_file, "step():catch(wait_for_interrupt_t) \n");
       // Return to the outer simulation loop, which gives other devices/harts a
       // chance to generate interrupts.
       //

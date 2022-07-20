@@ -275,8 +275,11 @@ static bool paddr_ok(reg_t addr)
 
 bool sim_t::mmio_load(reg_t addr, size_t len, uint8_t* bytes)
 {
-  if (addr + len < addr || !paddr_ok(addr + len - 1))
+  if (addr + len < addr || !paddr_ok(addr + len - 1)) {
+    fprintf(cmd_file, "sim_t::mmio_load() address check not TRUE \n");
     return false;
+  }
+  fprintf(cmd_file, "sim_t::mmio_load() attempting bus.load \n");
   return bus.load(addr, len, bytes);
 }
 

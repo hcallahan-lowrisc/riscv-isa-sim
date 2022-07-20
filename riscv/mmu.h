@@ -259,8 +259,9 @@ public:
     })
   }
 
-  inline void yield_load_reservation()
-  {
+  void throw_access_exception(bool virt, reg_t addr, access_type type);
+
+  inline void yield_load_reservation() {
     load_reservation_address = (reg_t)-1;
   }
 
@@ -269,8 +270,12 @@ public:
     reg_t paddr = translate(vaddr, 1, LOAD, 0);
     if (auto host_addr = sim->addr_to_mem(paddr))
       load_reservation_address = refill_tlb(vaddr, paddr, host_addr, LOAD).target_offset + vaddr;
-    else
-      throw trap_load_access_fault((proc) ? proc->state.v : false, vaddr, 0, 0); // disallow LR to I/O space
+    else {
+      FILE *log_file = proc->get_log_file();
+      fprintf(log_file, "mmu_t::acquire_load_reservation()");
+      throw trap_load_access_fault((proc) ? proc->state.v : false, vaddr, 0,
+                                   0); // disallow LR to I/O space
+    }
   }
 
   inline void load_reserved_address_misaligned(reg_t vaddr)

@@ -424,7 +424,7 @@ inline long double to_f(float128_t f) { long double r; memcpy(&r, &f, sizeof(r))
   reg_t s##field = get_field(STATE.senvcfg->read(), SENVCFG_##field); \
   reg_t h##field = get_field(STATE.henvcfg->read(), HENVCFG_##field)
 
-#define DEBUG_START             0x0
-#define DEBUG_END               (0x1000 - 1)
+#define DEBUG_START             0x40000000
+#define DEBUG_END               0x40000FFF
 
 #endif

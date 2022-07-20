@@ -603,6 +603,9 @@ void processor_t::take_interrupt(reg_t pending_interrupts)
     return;
   }
 
+  FILE *log_file = this->get_log_file();
+  fprintf(log_file, "take_interrupt(): Taking interrupt! \n");
+
   // M-ints have higher priority over HS-ints and VS-ints
   const reg_t mie = get_field(state.mstatus->read(), MSTATUS_MIE);
   const reg_t m_enabled = state.prv < PRV_M || (state.prv == PRV_M && mie);
