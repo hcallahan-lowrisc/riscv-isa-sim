@@ -218,6 +218,11 @@ bool mmu_t::pmp_ok(reg_t addr, reg_t len, access_type type, reg_t mode)
   if (!proc || proc->n_pmp == 0)
     return true;
 
+  // If the access is into the debug module in debug_mode, it must
+  // always succeed.
+  if (addr >= proc->start_debug && addr < proc->end_debug && proc && proc->state.debug_mode)
+    return true;
+
   for (size_t i = 0; i < proc->n_pmp; i++) {
     // Check each 4-byte sector of the access
     bool any_match = false;
