@@ -242,6 +242,7 @@ public:
   const isa_parser_t &get_isa() { return *isa; }
 
   void set_debug(bool value);
+  void set_debug_module_range(reg_t start_debug_val, reg_t end_debug_val);
   void set_histogram(bool value);
 #ifdef RISCV_ENABLE_COMMITLOG
   void enable_log_commits();
@@ -358,6 +359,8 @@ private:
   bool icache_en;
   bool ic_scr_key_valid;
   std::vector<bool> impl_table;
+  reg_t start_debug = DEBUG_START;
+  reg_t end_debug = DEBUG_END;
 
   std::vector<insn_desc_t> instructions;
   std::map<reg_t,uint64_t> pc_histogram;

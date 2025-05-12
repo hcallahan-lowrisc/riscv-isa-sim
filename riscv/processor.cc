@@ -490,6 +490,12 @@ void processor_t::set_debug(bool value)
     e.second->set_debug(value);
 }
 
+void processor_t::set_debug_module_range(reg_t start_debug_val, reg_t end_debug_val)
+{
+  start_debug = start_debug_val;
+  end_debug = end_debug_val;
+}
+
 void processor_t::set_histogram(bool value)
 {
   histogram_enabled = value;
